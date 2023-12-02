@@ -10,10 +10,12 @@
 
 
 volatile int32_t postion ;
-volatile int32_t last_postion  ;
-volatile int32_t curent_postion ;
-volatile int32_t last_state_signal ;
-volatile int32_t current_state_signal ;
+volatile int32_t final_postion ;
+volatile int32_t prev_final_postion ;
+
+
+volatile int8_t last_state_signal ;
+volatile int8_t current_state_signal ;
 
 
 const int8_t Encoder_states[] = {
@@ -35,11 +37,13 @@ std_return_type ecu_rotary_encoder_intialize (const rotary_encoder_t * r_encoder
 
 		GPIO_InitTypeDef pin_obj_A = {
 				.Mode = GPIO_MODE_INPUT,
+				.Pull = GPIO_PULLUP,
 				.Pin = (r_encoder->ROTARY_PIN_OUTPUTA),
 
 		} ;
 		GPIO_InitTypeDef pin_obj_B = {
 				.Mode = GPIO_MODE_INPUT,
+				.Pull = GPIO_PULLUP,
 				.Pin = (r_encoder->ROTARY_PIN_OUTPUTB),
 		} ;
 
@@ -54,12 +58,12 @@ std_return_type ecu_rotary_encoder_intialize (const rotary_encoder_t * r_encoder
 		uint8_t pinb_signal =   HAL_GPIO_ReadPin( (r_encoder->ROTARY_PORT_OUTPUTB ), (r_encoder ->ROTARY_PIN_OUTPUTB) ) ;
 
 		/*take the 2 read in one variable */
-		last_state_signal =  ( pina_signal | pinb_signal <<1);
+		last_state_signal =  ( pina_signal | (pinb_signal <<1));
 
 		/** Make start Position with 0     <-  Problem Here **/
 		postion = 0 ;
-		last_postion = 0 ;
-		curent_postion = 0 ;
+		final_postion = 0 ;
+		prev_final_postion = 0 ;
 	    ret = ENCODER_OK ;
 	}
 
@@ -83,22 +87,35 @@ std_return_type ecu_rotary_encoder_measure_postion(const rotary_encoder_t *r_enc
 		uint8_t pinb_signal =   HAL_GPIO_ReadPin( (r_encoder->ROTARY_PORT_OUTPUTB ), (r_encoder ->ROTARY_PIN_OUTPUTB) ) ;
 
 		/*take the 2 read in one variable */
-		current_state_signal =  ( pina_signal | pinb_signal <<1);
-		last_postion = postion ;
+		current_state_signal =  ( pina_signal | pinb_signal << 1);
+
+
+			prev_final_postion = final_postion ;
+
 		if (current_state_signal != last_state_signal )
 		{
 
-			postion += Encoder_states[(current_state_signal | last_state_signal<<2 ) ] ;
+			postion += Encoder_states[(current_state_signal | (last_state_signal<<2) )] ;
+
+
+
+			last_state_signal = current_state_signal ;
+
+			if (current_state_signal ==  3 )
+			{
+				final_postion = postion >> 2 ;
+			}
+
+
 		}
-
-		last_state_signal = current_state_signal ;
-
 		/*	Know the Type of Rotation 	*/
-		if ( postion > last_postion  )
+
+
+		if ( final_postion  >  prev_final_postion )
 		{
 			*encoder_rotation  = ENCODER_CLOCK_WISE ;
 		}
-		else if (postion < last_postion  )
+		else if ( final_postion < prev_final_postion  )
 		{
 			*encoder_rotation  = ENCODER_ANTI_CLOCK_WISE ;
 		}
@@ -109,6 +126,7 @@ std_return_type ecu_rotary_encoder_measure_postion(const rotary_encoder_t *r_enc
 		}
 
 
+		ret = ENCODER_OK ;
 
 
 	}
@@ -126,8 +144,9 @@ std_return_type ecu_rotary_encoder_return_postion_value (int32_t *postion_value)
 	else{
 
 
-		*postion_value = postion ;
+		*postion_value = final_postion ;
 
+		ret = ENCODER_OK ;
 	}
 	return  ret ;
 }
